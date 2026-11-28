@@ -31,7 +31,8 @@ def feed(c: Clock, replies: list):
 def test_the_song_is_the_players_shape_at_the_servers_position_now():
     c, rs = Clock(), [reply()]
     f = feed(c, rs)
-    assert f.url == "http://127.0.0.1:5000/api/karaoke/now"
+    assert f.url == "http://127.0.0.1:5000/api/songs/now"          # the room's song (owner, 28 Nov: not karaoke's alone)
+    assert f.url_old == "http://127.0.0.1:5000/api/karaoke/now"
     assert f.now_playing() is None and f.playing() is False      # nothing read yet
     f.poll_once()
     c.t = 102.5
@@ -239,3 +240,71 @@ def test_energy_ahead_reads_the_songs_shape_where_the_room_will_be():
     f._shape = ("k1", {"hop": 0.5, "v": [i / 100.0 for i in range(100)]})
     assert f.energy_ahead(0.0) == pytest.approx(0.2)              # 10 s = hop 20
     assert f.energy_ahead(2.0) == pytest.approx(0.24)
+
+
+# -- 28 Nov: any known song, not karaoke's alone (owner: "the same logic (precisely -- same codepaths ...) available
+# for a.d. processing of sonos tracks") --------------------------------------------------------------------------------
+def sonos_reply(pos=10.0, at=100.0, song="k1", state="playing"):
+    r = reply(state=state, pos=pos, at=at, song=song, qid=None)
+    r["source"] = "sonos:Living Room"
+    return r
+
+
+def test_a_sonos_song_is_a_known_song_but_nobody_is_singing():
+    c, rs = Clock(), [sonos_reply()]
+    f = feed(c, rs)
+    f.poll_once()
+    np_ = f.now_playing()
+    assert np_["source"] == "sonos:Living Room" and np_["key"] == "sonos:k1:"
+    assert K.is_song(np_) and not K.is_karaoke(np_)
+    assert f.playing() is False                                   # the mic's Karaoke want is for singing
+    assert K.is_song({"key": "karaoke:k1:q1", "source": "karaoke"}) and K.is_karaoke({"source": "karaoke"})
+    assert not K.is_song({"key": "lib:a", "source": "player"})     # the Music page's piece isn't a library song
+
+
+def test_an_older_flask_without_songs_now_still_gives_the_karaoke_song():
+    c = Clock()
+    def fetch(url):
+        if url.endswith("/api/songs/now"):
+            raise OSError("404")
+        return reply()
+    f = K.KaraokeFeed("http://127.0.0.1:5000", fetch=fetch, clock=lambda: c.t, mono=lambda: c.t)
+    f.poll_once()
+    assert f.now_playing()["source"] == "karaoke"
+
+
+def test_a_sonos_position_in_whole_seconds_is_narrowed_to_the_songs_real_start():
+    c, rs = Clock(), [None]
+    f = feed(c, rs)
+    start = 90.3                                                  # the song really began here (wall clock)
+    for at in (100.0, 102.4, 104.8, 107.2):                       # Flask's Sonos reads, whole seconds
+        c.t = at
+        rs[0] = sonos_reply(pos=float(int(at - start)), at=at)
+        f.poll_once()
+    assert f.now_playing()["pos_s"] == pytest.approx(c.t - start, abs=0.36)
+    assert f.heard_pos()[1] == pytest.approx(c.t - start, abs=0.36)
+    c.t = 110.0                                                   # a seek: the start jumps, and starts again
+    rs[0] = sonos_reply(pos=60.0, at=110.0)
+    f.poll_once()
+    assert f.now_playing()["pos_s"] == pytest.approx(60.5, abs=0.01)  # 60 in whole seconds: 60..61, the middle
+
+
+def test_a_sonos_songs_grid_is_pulled_onto_the_mics_beats():
+    from show_service.clock import beat_at
+    c, rs = Clock(), [sonos_reply(pos=10.0, at=100.0)]
+    f = gfeed(c, rs, _grid())
+    f.poll_once()
+    body = f.clock_override(c.t, None)
+    assert body["gate"] == "dmx"                                  # one read: loose, and no mic beat to check it by
+    # the mic hears the beats 0.1 s later than the position put them (120 bpm, locked)
+    file_beat_t = c.t + (body["anchor_ms"] / 1000.0 - c.t)
+    mic = {"bpm": 120.0, "anchor_ms": (file_beat_t + 0.1) * 1000.0, "beat_at_anchor": 0.0, "gate": "beat",
+           "epoch": 1}
+    for _ in range(200):
+        c.t += 0.02
+        body = f.clock_override(c.t, mic)
+    assert body["gate"] == "beat"
+    # its beats now fall where the mic's do
+    k = round(beat_at(body, c.t))
+    t_k = c.t + (k - beat_at(body, c.t)) * 0.5
+    assert abs(((t_k - (file_beat_t + 0.1)) / 0.5 + 0.5) % 1.0 - 0.5) * 0.5 < 0.01

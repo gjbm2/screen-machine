@@ -193,6 +193,7 @@ from . import moves as movesmod
 from . import flow as flowmod
 from . import light_scenes as lscenes
 from . import roomlight
+from .karaoke_feed import is_karaoke, is_song   # a known song (karaoke or Sonos) vs one being sung
 from . import palette as pal
 from . import treatment as treatmod
 from . import idiom as idiommod
@@ -1896,8 +1897,13 @@ class Director:
         # relax (§8.5): quiet or talking, unless the vibe says otherwise; and no audio at all (liveness run down after
         # the hold and the fade, nobody playing): drift to the base look and stop changing, whatever the vibe says
         no_audio = not fresh and self.lv <= 0.0 and not playing
-        relax_want = 1.0 if not karaoke_on and (no_audio or (vs["relax_on_talk"] and (self._situation("quiet")
-                                                                                       or self._situation("talking")))) else 0.0
+        # a known song plays (karaoke_on): never "quiet" (the file says it plays, whatever the mic hears); a Sonos
+        # song talked over relaxes as the feel says; a karaoke song never does (the voices are singing)
+        if karaoke_on:
+            relax_want = 1.0 if (not self._singing() and vs["relax_on_talk"] and self._situation("talking")) else 0.0
+        else:
+            relax_want = 1.0 if (no_audio or (vs["relax_on_talk"] and (self._situation("quiet")
+                                                                       or self._situation("talking")))) else 0.0
         self._relax = _ema(self._relax, relax_want, dt, RELAX_TAU_S)
         was = self._relaxed
         self._relaxed = self._relax > 0.5
@@ -2412,7 +2418,9 @@ class Director:
         np_ = _call(getattr(self.ctx, "now_playing", None))
         if isinstance(np_, dict) and np_.get("key") and np_.get("state") == "playing":
             song = str(np_.get("title") or np_["key"])[:80]
-            based.append(f"{'Karaoke' if np_.get('source') == 'karaoke' else 'the Music page'}: {song}")
+            src = str(np_.get("source") or "")
+            based.append(f"{'Karaoke' if is_karaoke(np_) else 'Sonos' if src.startswith('sonos') else 'the Music page'}"
+                         f": {song}")
         sp = self._situation("sonos_playing")
         if song is None and sp and isinstance(room, dict) and self._np_target:
             m = (room.get("members") or {}).get(self._np_target)
@@ -2660,10 +2668,18 @@ class Director:
         return [KARAOKE_DWELL_MIN_S, round(hi, 1)]
 
     def _karaoke_np(self) -> Optional[dict]:
+        """The known song playing (owner, 28 Nov: the karaoke machinery for any song, "it shouldn't be specific to
+        karaoke mode"): a karaoke song or a Sonos track that is a library song, with its brief, sections, grid and
+        shape. Being SUNG is _singing()."""
         np_ = _call(getattr(self.ctx, "now_playing", None))
-        if isinstance(np_, dict) and np_.get("source") == "karaoke" and np_.get("state") == "playing" and np_.get("key"):
+        if is_song(np_) and np_.get("state") == "playing":
             return np_
         return None
+
+    def _singing(self) -> bool:
+        """A karaoke song plays: people sing, so the mic's voices aren't talk."""
+        np_ = self._karaoke_np()
+        return np_ is not None and is_karaoke(np_)
 
     def _brief(self) -> Optional[dict]:
         """The playing karaoke song's brief (brief.py, with the feed's now_playing) and its idiom's ``entry``
@@ -2859,12 +2875,12 @@ class Director:
 
     def _karaoke_paused(self) -> bool:
         np_ = _call(getattr(self.ctx, "now_playing", None))
-        return isinstance(np_, dict) and np_.get("source") == "karaoke" and np_.get("state") == "paused"
+        return is_song(np_) and np_.get("state") == "paused"
 
     def _song_genre(self) -> Optional[str]:
         """The karaoke song's catalogue genre as a vocabulary word (SONG_GENRES), while it plays; else None."""
         np_ = _call(getattr(self.ctx, "now_playing", None))
-        if not isinstance(np_, dict) or np_.get("source") != "karaoke" or np_.get("state") != "playing":
+        if not is_song(np_) or np_.get("state") != "playing":
             return None
         b = np_.get("brief") if self.cfg["brief"]["enabled"] else None
         if isinstance(b, dict) and b.get("genre"):       # its brief read the song itself (brief.py)
@@ -6690,7 +6706,7 @@ class Director:
             np_ = _call(getattr(self.ctx, "now_playing", None))
         except Exception:                                 # noqa: BLE001 - the log never stops the show
             return None
-        if not isinstance(np_, dict) or np_.get("source") != "karaoke" or not np_.get("key"):
+        if not is_song(np_):
             return None
         parts = str(np_["key"]).split(":")
         pos = _num(np_.get("pos_s"))

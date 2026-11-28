@@ -24,6 +24,14 @@ Positions: ``pos_s`` is the song position the ROOM hears now (the player's posit
 settings.audio_delay_ms), so the song's end lands as heard; sections are at their audio time (the lyrics' time plus
 the song's lyric offsets), snapped to the file's nearest downbeat within half a bar.
 
+Any known song, not only karaoke (owner, 28 Nov: "the same logic (precisely -- same codepaths ...) available for a.d.
+processing of sonos tracks ... it shouldn't be specific to karaoke mode"): Flask's GET /api/songs/now is the song the
+room plays, the karaoke player's or a Sonos zone's track when it is a ready library song (routes/karaoke/room_song.py),
+with ``source`` "karaoke" or "sonos:<zone>". Everything above follows either; only ``playing()`` (the mic's want: the
+room is heard while one SINGS) is karaoke's alone. A Sonos position resolves to 1 s, read every 2 s: the song's start
+is narrowed across the reads (each says it lies in a 1 s window), and the file grid's phase is pulled onto the room
+mic's beats while the mic's clock is locked at the same tempo.
+
 Only while the deployment's ``karaoke`` capability is on (``__main__``). Flask down or a bad reply: None / False
 until it answers again (a read older than STALE_S counts as none).
 """
@@ -115,6 +123,26 @@ def library_grid(song_id: str) -> Optional[FileGrid]:
 
 POLL_S = 1.0
 STALE_S = 5.0
+SONOS_RES_S = 1.0          # a Sonos position resolves to this (whole seconds)
+SONOS_SLACK_S = 0.25       # ... and its read time can be this far off either side
+SONOS_LOOSE_S = 0.3        # narrowed less than this: the grid runs at gate "dmx" until the mic's beats confirm it
+PHASE_ALPHA = 0.05         # the file grid's phase moves this share of the way onto the mic's beats each music.clock
+PHASE_TEMPO_TOL = 0.05     # ... only while the mic's tempo is within this of the file's (or half of it)
+PHASE_MAX_S = 0.6          # ... and never more than this from where the position puts it
+
+
+def is_song(np_: Any) -> bool:
+    """A known library song playing (this feed's now_playing, whatever its source): its brief, grid, sections and
+    shape exist. The Music page's own piece is not one."""
+    if not isinstance(np_, dict) or not np_.get("key"):
+        return False
+    src = str(np_.get("source") or "")
+    return src == "karaoke" or src.startswith("sonos")
+
+
+def is_karaoke(np_: Any) -> bool:
+    """A karaoke song: someone sings (the mic's want, singing isn't talk)."""
+    return isinstance(np_, dict) and np_.get("source") == "karaoke"
 TIMEOUT_S = 2.0
 
 
@@ -189,7 +217,11 @@ class KaraokeFeed:
                  grid_fn: Optional[Callable[[str], Optional[FileGrid]]] = None,
                  brief_fn: Optional[Callable[..., Optional[dict]]] = None,
                  moments_fn: Optional[Callable[[str], Optional[dict]]] = None) -> None:
-        self.url = base_url.rstrip("/") + "/api/karaoke/now"
+        self.base = base_url.rstrip("/")
+        self.url = self.base + "/api/songs/now"           # the room's song: karaoke's, else a Sonos zone's library track
+        self.url_old = self.base + "/api/karaoke/now"     # a Flask from before /api/songs/now: karaoke only
+        self._sonos_iv: Optional[dict] = None             # a Sonos song's start, narrowed: {sid, lo, hi, at}
+        self._ph_off = 0.0                               # the file grid pulled onto the mic's beats (s)
         self._brief_fn = brief_fn                        # (song id, shape, ai) -> its brief (library_brief), or None
         self._brief: tuple[Optional[str], Optional[dict]] = (None, None)                   # (song, its brief)
         self._brief_asked: set[str] = set()              # songs whose AI brief was asked for (once a run)
@@ -216,7 +248,10 @@ class KaraokeFeed:
     # -- reading ------------------------------------------------------------------------------------------------------
     def poll_once(self) -> None:
         try:
-            o = self._fetch(self.url)
+            try:
+                o = self._fetch(self.url)
+            except Exception:                            # noqa: BLE001 - an older Flask: the karaoke player's alone
+                o = self._fetch(self.url_old)
             if not isinstance(o, dict):
                 raise ValueError("not an object")
         except Exception as e:                           # noqa: BLE001 - Flask restarting: next time
@@ -229,6 +264,7 @@ class KaraokeFeed:
         self._failing = False
         was = self.playing()
         self._last, self._read_at = o, self._mono()
+        self._sonos_read(o)
         self._read_sections(o)
         self._read_grid(o)
         nxt = o.get("up_next")                           # the song after this one: its AI brief, before it starts
@@ -256,7 +292,7 @@ class KaraokeFeed:
             return
         try:
             from .lyric_sections import sections_from_lyrics
-            lyr = self._fetch(f"{self.url.rsplit('/now', 1)[0]}/songs/{sid}/lyrics")
+            lyr = self._fetch(f"{self.base}/api/karaoke/songs/{sid}/lyrics")
             dur = s.get("audio_s") or s.get("duration")
             secs = sections_from_lyrics(lyr, float(dur) if dur else None)
             from .song_character import excerpt
@@ -362,6 +398,51 @@ class KaraokeFeed:
                 log.info("karaoke: %s's AI brief not made (%s: %s)", sid, type(e).__name__, e)
         threading.Thread(target=work, name="karaoke-brief", daemon=True).start()
 
+    @staticmethod
+    def _source(o: Optional[dict]) -> Optional[str]:
+        if not o:
+            return None
+        src = o.get("source")
+        return str(src) if src else ("karaoke" if (o.get("player") or {}).get("song_id") else None)
+
+    def _sonos_read(self, o: dict) -> None:
+        """A Sonos read: its song's start (wall clock) lies in [at - pos - 1 s, at - pos] (a whole-second position),
+        give or take the read's own lag; each new read narrows it, a jump (a seek, a pause) starts again."""
+        src = self._source(o) or ""
+        p = o.get("player") or {}
+        if not src.startswith("sonos") or p.get("state") != "playing" or not p.get("song_id"):
+            self._sonos_iv = None
+            return
+        try:
+            at, pos = float(p["at"]), float(p.get("pos_s") or 0.0)
+        except (KeyError, TypeError, ValueError):
+            return
+        iv = self._sonos_iv
+        if iv is not None and iv["sid"] == p["song_id"] and iv["at"] == at:
+            return                                       # the same read again (Flask reads Sonos every 2 s)
+        lo, hi = at - pos - SONOS_RES_S - SONOS_SLACK_S, at - pos + SONOS_SLACK_S
+        if iv is not None and iv["sid"] == p["song_id"] and max(lo, iv["lo"]) <= min(hi, iv["hi"]):
+            lo, hi = max(lo, iv["lo"]), min(hi, iv["hi"])
+        else:
+            self._ph_off = 0.0
+        self._sonos_iv = {"sid": p["song_id"], "lo": lo, "hi": hi, "at": at}
+
+    def _player_pos(self, o: dict) -> Optional[float]:
+        """The player's position now (before the delay to the room): karaoke's exact clock; a Sonos song's from its
+        narrowed start."""
+        p = o.get("player") or {}
+        iv = self._sonos_iv
+        if p.get("state") == "playing" and iv is not None and iv["sid"] == p.get("song_id") and \
+                (self._source(o) or "").startswith("sonos"):
+            return self._clock() - 0.5 * (iv["lo"] + iv["hi"])
+        try:
+            pos = float(p.get("pos_s") or 0.0)
+            if p.get("state") == "playing":
+                pos += max(0.0, self._clock() - float(p.get("at") or 0.0))
+        except (TypeError, ValueError):
+            return None
+        return pos
+
     def _fresh(self) -> Optional[dict]:
         o = self._last
         return o if o is not None and self._mono() - self._read_at <= STALE_S else None
@@ -376,12 +457,8 @@ class KaraokeFeed:
             return None
         if not p.get("song_id"):
             return None
-        try:
-            pos = float(p.get("pos_s") or 0.0)
-            if p["state"] == "playing":
-                pos += max(0.0, self._clock() - float(p.get("at") or 0.0))
-        except (TypeError, ValueError):
-            pos = None
+        pos = self._player_pos(o)
+        src = self._source(o) or "karaoke"
         dur = s.get("audio_s") or s.get("duration")
         try:
             dur = float(dur) if dur else None
@@ -403,9 +480,10 @@ class KaraokeFeed:
             return grid.snap_downbeat(t) if grid is not None else t
         if pos is not None:
             pos -= delay                                 # where the room is in the song (its end lands as heard)
-        return {"key": f"karaoke:{p['song_id']}:{p.get('qid') or ''}", "state": p["state"], "pos_s": pos,
+        kind = "karaoke" if src == "karaoke" else src.split(":")[0]
+        return {"key": f"{kind}:{p['song_id']}:{p.get('qid') or ''}", "state": p["state"], "pos_s": pos,
                 "dur_s": dur, "speed": 1.0, "title": (title + (f" — {artist}" if artist else "")) or None,
-                "source": "karaoke",
+                "source": src,
                 # the song's catalogue facts (Deezer, routes/karaoke/store.py FACTS): the director's genre while it
                 # plays (director._song_genre; owner, 26 Nov: song context "should be doing more work")
                 "artist": artist or None, "genre": s.get("genre") or None, "year": s.get("year") or None,
@@ -449,9 +527,8 @@ class KaraokeFeed:
         p = o.get("player") if o else None
         if not isinstance(p, dict) or p.get("state") != "playing" or not p.get("song_id"):
             return None
-        try:
-            pos = float(p.get("pos_s") or 0.0) + max(0.0, self._clock() - float(p.get("at") or 0.0))
-        except (TypeError, ValueError):
+        pos = self._player_pos(o)
+        if pos is None:
             return None
         pos -= self._shifts(o)[1]
         if now_mono is not None:
@@ -512,11 +589,40 @@ class KaraokeFeed:
             bars = int(round((cd - sd) / bpb))
             bar_anchor = cd - (bars % GRID_PHRASE_BARS) * bpb
             conf_ph = 0.6
-        return {"bpm": round(60.0 / per, 3), "anchor_ms": (now_s + float(b[k]) - t) * 1000.0,
+        anchor_s = now_s + float(b[k]) - t
+        gate, conf = "beat", 0.95
+        if (self._source(self._fresh()) or "").startswith("sonos"):
+            anchor_s, gate, conf = self._onto_mic(anchor_s, per, now_s, body)
+        return {"bpm": round(60.0 / per, 3), "anchor_ms": anchor_s * 1000.0,
                 "beat_at_anchor": base + k, "beats_per_bar": bpb, "bar_anchor_beat": base + bar_anchor,
-                "phrase_bars": GRID_PHRASE_BARS, "conf": 0.95, "bar_conf": 0.9, "phrase_conf": conf_ph,
-                "state": "locked", "gate": "beat", "epoch": ov["epoch"], "stability": 1.0,
-                "source": grid.source, "t_ms": now_s * 1000.0}
+                "phrase_bars": GRID_PHRASE_BARS, "conf": conf, "bar_conf": 0.9 if gate == "beat" else 0.6,
+                "phrase_conf": conf_ph, "state": "locked", "gate": gate, "epoch": ov["epoch"], "stability": 1.0,
+                "source": grid.source if gate == "beat" else f"{grid.source}+sonos", "t_ms": now_s * 1000.0}
+
+    def _onto_mic(self, anchor_s: float, per: float, now_s: float, body: Optional[dict]) -> tuple[float, str, float]:
+        """A Sonos song's grid: its position is only good to a fraction of a second, so its beats are pulled onto
+        the room mic's while the mic's clock is locked at the file's tempo (or half of it); until then, and while
+        its start is still loose, it runs at gate "dmx" (lamps only at the middle depth: README §5.4)."""
+        iv = self._sonos_iv
+        loose = iv is None or iv["hi"] - iv["lo"] > SONOS_LOOSE_S
+        mic_ok = False
+        if body and body.get("gate") == "beat" and float(body.get("bpm") or 0.0) > 0.0:
+            r = float(body["bpm"]) * per / 60.0          # the mic's tempo over the file's
+            for octave in (1.0, 0.5):                 # a half-time mic beat is on a file beat; a double-time one may not be
+                if abs(r / octave - 1.0) <= PHASE_TEMPO_TOL:
+                    from .clock import beat_at
+                    mp = 60.0 / float(body["bpm"])
+                    f_mic = beat_at(body, now_s)          # type: ignore[arg-type]
+                    # the mic's nearest beat to now, in seconds, against the file's
+                    t_mic = now_s - ((f_mic % 1.0) * mp)
+                    d = ((t_mic - (anchor_s + self._ph_off)) / per) % 1.0
+                    d = (d - 1.0 if d > 0.5 else d) * per     # within half a beat either way
+                    self._ph_off += PHASE_ALPHA * d
+                    self._ph_off = max(-PHASE_MAX_S, min(PHASE_MAX_S, self._ph_off))
+                    mic_ok = True
+                    break
+        gate = "beat" if (mic_ok or not loose) else "dmx"
+        return anchor_s + self._ph_off, gate, 0.95 if gate == "beat" else 0.6
 
     def _phrase_downbeat(self, sid: str, t: float, grid: FileGrid) -> Optional[int]:
         """The beat index of the downbeat nearest the start of the section the song is in at ``t`` (audio time)."""
@@ -542,7 +648,7 @@ class KaraokeFeed:
         if o and isinstance(o.get("calibration"), dict) and o["calibration"].get("state") == "running":
             return True
         np_ = self.now_playing()
-        return bool(np_ and np_.get("state") == "playing")
+        return bool(np_ and np_.get("state") == "playing" and is_karaoke(np_))
 
     def add_on_change(self, fn: Callable[[], None]) -> None:
         """``fn()`` when a song starts or stops playing (the mic's wake)."""
