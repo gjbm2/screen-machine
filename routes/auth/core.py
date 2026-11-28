@@ -3,7 +3,7 @@ import os
 import re
 import secrets
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from flask import request
 from itsdangerous import BadSignature, URLSafeTimedSerializer
@@ -142,6 +142,9 @@ class Viewer:
     email: str = None
     name: str = None
     local: bool = False
+    # an API key's request (keys.py): the key's row, or why the one presented was refused
+    key: dict = field(default=None, compare=False)
+    key_error: str = None
 
     def at_least(self, role):
         return self.local or rank(self.role) >= rank(role)
@@ -151,9 +154,33 @@ class Viewer:
         return self.at_least("admin")
 
 
+def presented_key():
+    """The API key the request carries (Authorization: Bearer smk_…, or X-API-Key), or None. Another bearer token
+    (the admin API's, routes/admin_api.py) is not one."""
+    auth = request.headers.get("Authorization", "")
+    if auth[:7].lower() == "bearer " and auth[7:].strip().startswith("smk_"):
+        return auth[7:].strip()
+    return request.headers.get("X-API-Key", "").strip() or None
+
+
+def _key_viewer(token):
+    """A request with an API key is that key, wherever it comes from (keys.py): a guest, or approved for the private
+    catalogue, whose space is its maker's. A refused key is a viewer with only its reason."""
+    from routes.auth import keys
+    key, why = keys.check(token)
+    if not key:
+        return Viewer(role="guest", key_error=why)
+    return Viewer(role="approved" if key["private"] else "guest", email=key.get("created_by"),
+                  name=f"API key {key['name']}", key=key)
+
+
 def viewer():
     """Who is calling this request (kept in the request's environ, which is never shared between requests)."""
     if "sm.viewer" in request.environ:
+        return request.environ["sm.viewer"]
+    token = presented_key()
+    if token:
+        request.environ["sm.viewer"] = _key_viewer(token)
         return request.environ["sm.viewer"]
     local = request.remote_addr in _LOCAL and "X-Forwarded-For" not in request.headers
     s = _session()
@@ -171,6 +198,8 @@ def own_space(mint=True):
     """The caller's generator space: "u:<email>" when signed in, else "g:<browser key>" (made, and set as a cookie
     on the response, the first time it is needed). None when there is none and mint is False."""
     v = viewer()
+    if v.key:
+        return v.key.get("space") or "k:" + v.key["id"]
     if v.email:
         return "u:" + v.email
     raw = request.cookies.get(SPACE_COOKIE) or request.environ.get("sm.new_space")
@@ -214,7 +243,11 @@ def private_ok():
     the routing text that goes with them): approved people and admins. Work with no request behind it (schedules,
     generation threads) and processes on this machine may."""
     from flask import has_request_context
-    if not has_request_context() or not active():
+    if not has_request_context():
+        return True
+    if viewer().key:  # an API key's own setting, with accounts on or off
+        return viewer().key["private"]
+    if not active():
         return True
     return viewer().at_least("approved")
 
@@ -250,9 +283,11 @@ def job_visibility(everyone=True):
     mine = own_space(mint=False)
 
     def visible(job):
-        if job.get("source") == "generator":
-            from routes.auth.spaces import batch_space
-            return bool(mine) and batch_space(job.get("batch_id")) == mine
+        from routes.auth.spaces import batch_space
+        # the generator's jobs and an API key's (whose batch has a space) are their space's
+        space = batch_space(job.get("batch_id")) if job.get("source") in ("generator", "api") else None
+        if job.get("source") == "generator" or space:
+            return bool(mine) and space == mine
         target = job.get("target")
         return bool(target) and v.at_least(destination_access(target))
     return visible

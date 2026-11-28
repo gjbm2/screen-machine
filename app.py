@@ -50,6 +50,7 @@ import routes.art_tags
 from routes.deployment_api import deployment_api
 from routes.bakeoff_api import bakeoff_api
 from routes.auth.api import auth_api
+from routes.api_v1 import api_v1
 from routes.screensaver import screensaver_api
 from routes.perf_api import perf_api
 from routes.screen_notes import screen_notes_api
@@ -90,6 +91,7 @@ app.register_blueprint(art_tags_api, url_prefix=API_PREFIX)  # AI art tags + tag
 app.register_blueprint(deployment_api, url_prefix=API_PREFIX)  # GET /api/deployment (deployments/README.md)
 app.register_blueprint(bakeoff_api, url_prefix=API_PREFIX)  # blind model bake-off page (docs/genai-review/PROJECT_PLAN.md)
 app.register_blueprint(auth_api, url_prefix=API_PREFIX)  # Google sign-in (docs/ACCOUNTS.md)
+app.register_blueprint(api_v1, url_prefix=API_PREFIX)  # the generation API for apps and agents, /api/v1 (docs/API.md)
 app.register_blueprint(screensaver_api, url_prefix=API_PREFIX)  # the Windows screensaver download (tools/screensaver/)
 app.register_blueprint(perf_api, url_prefix=API_PREFIX)  # GET /api/perf/gpu: who uses the GPU (utils/gpu_watch.py)
 app.register_blueprint(screen_notes_api, url_prefix=API_PREFIX)  # comments on what a screen showed

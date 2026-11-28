@@ -99,4 +99,6 @@ export const DEV_LINKS: Array<{ label: string; href: () => string; lan?: boolean
   { label: "Schema form playground", href: () => "/schema-dynamic-form" },
   { label: "Admin", href: () => "/adminadmin" },
   { label: "App health (JSON)", href: () => "/api/health" },
+  { label: "API keys (for apps and agents)", href: () => settingsUrl("api") },
+  { label: "API description (OpenAPI)", href: () => "/api/v1/openapi.json" },
 ];

@@ -6,7 +6,7 @@ import time
 import requests
 from flask import Blueprint, jsonify, request
 
-from routes.auth import core, lock, spaces
+from routes.auth import core, keys, lock, spaces
 from utils.logger import info, warning
 
 auth_api = Blueprint("auth_api", __name__)
@@ -171,3 +171,88 @@ def private_workflows():
         return jsonify(smconfig.read_data(path) or [])
     except OSError:
         return jsonify([])
+
+
+# ---------------------------------------------------------------- API keys (Settings › Apps & API keys; keys.py)
+
+def _key_dests():
+    """The screens a key may be given: every destination but Generated and the hidden ones."""
+    import smconfig
+    return [{"id": d["id"], "name": d.get("name") or d["id"]} for d in smconfig.destinations()
+            if d["id"] != "_recent" and not lock.hidden(d["id"])]
+
+
+def _key_list():
+    from routes.api_v1 import runs
+    day_ago = time.time() - 86400
+    rows = []
+    for k in keys.all_keys():
+        row = keys.public(k)
+        row["last_24h"] = runs.made_since(k["id"], day_ago)[0]
+        rows.append(row)
+    return {"keys": rows, "scopes": list(keys.SCOPES), "destinations": _key_dests()}
+
+
+def _expiry(body):
+    days = body.get("expires_days")
+    if days in (None, "", 0):
+        return None
+    try:
+        return time.time() + float(days) * 86400
+    except (TypeError, ValueError):
+        raise ValueError("expires_days is a number of days") from None
+
+
+@auth_api.route("/auth/keys", methods=["GET"])
+def list_keys():
+    return jsonify(_key_list())
+
+
+@auth_api.route("/auth/keys", methods=["POST"])
+def make_key():
+    """{name, scopes, destinations, private, per_day, concurrent, expires_days}: a new key. The answer carries the
+    whole key (`secret`) this once."""
+    body = request.get_json(silent=True) or {}
+    v = core.viewer()
+    try:
+        key, secret = keys.create(body.get("name"), created_by=v.email, space=core.own_space(),
+                                  scopes=body.get("scopes") or ["generate"], destinations=body.get("destinations") or [],
+                                  private=bool(body.get("private")), per_day=body.get("per_day", 100),
+                                  concurrent=body.get("concurrent", 3), expires_at=_expiry(body))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({**_key_list(), "key": keys.public(key), "secret": secret}), 201
+
+
+@auth_api.route("/auth/keys/<key_id>", methods=["PUT"])
+def change_key(key_id):
+    body = request.get_json(silent=True) or {}
+    try:
+        if "expires_days" in body:
+            body["expires_at"] = _expiry(body)
+        key = keys.update(key_id, body)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if not key:
+        return jsonify({"error": "no such key"}), 404
+    return jsonify({**_key_list(), "key": keys.public(key)})
+
+
+@auth_api.route("/auth/keys/<key_id>/roll", methods=["POST"])
+def roll_key(key_id):
+    """{grace_hours}: a new secret; the old one works that much longer (0 = stops now)."""
+    try:
+        key, secret = keys.roll(key_id, (request.get_json(silent=True) or {}).get("grace_hours") or 0)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if not key:
+        return jsonify({"error": "no such key"}), 404
+    return jsonify({**_key_list(), "key": keys.public(key), "secret": secret})
+
+
+@auth_api.route("/auth/keys/<key_id>", methods=["DELETE"])
+def revoke_key(key_id):
+    key = keys.revoke(key_id, by=core.viewer().email)
+    if not key:
+        return jsonify({"error": "no such key"}), 404
+    return jsonify({**_key_list(), "key": keys.public(key)})

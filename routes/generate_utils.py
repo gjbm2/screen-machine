@@ -135,7 +135,7 @@ def save_to_recent(img_url, batch_id, metadata=None, reference_sources=None):
         error(f"[save_to_recent] Traceback: {traceback.format_exc()}")
         return None
 
-def process_generate_image_request(data, uploaded_images=None):
+def process_generate_image_request(data, uploaded_images=None, job_source="generator", job_ids=None):
     """
     Process a web/API request for image generation.
     
@@ -147,6 +147,8 @@ def process_generate_image_request(data, uploaded_images=None):
     Args:
         data: The JSON data containing prompt, workflow, params, etc.
         uploaded_images: List of encoded images from file uploads
+        job_source: who asked, for the jobs (the generator page, or "api": routes/api_v1)
+        job_ids: Optional list; the ids of the jobs made are appended to it as they are made
         
     Returns:
         A dictionary containing generated images information and batch ID
@@ -212,13 +214,13 @@ def process_generate_image_request(data, uploaded_images=None):
     }
     
     # Call handler for image generation
-    job_ids = []
+    job_ids = job_ids if job_ids is not None else []
     try:   
         from routes.generate_handler import handle_image_generation
         response = handle_image_generation(
             input_obj=send_obj,
             wait=True,
-            source="generator",
+            source=job_source,
             job_ids_out=job_ids,
             **call_args
         )
@@ -320,6 +322,7 @@ def process_generate_image_request(data, uploaded_images=None):
                 target_path = save_to_recent(r.get("message"), batch_id, metadata=image_data, reference_sources=reference_sources)
                 if target_path:
                     recent_files.append(target_path.name)
+                    image_data["recent_file"] = target_path.name
                     _file_with_its_still(target_path, image_data, source)
             except Exception as e:
                 error(f"[generate_image] Failed to copy into _recent: {e}")

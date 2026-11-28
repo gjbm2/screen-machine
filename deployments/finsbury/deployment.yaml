@@ -34,6 +34,7 @@ wording:
 
 capabilities:
   generation: true
+  api: true          # /api/v1 for other apps and agents (docs/API.md; owner, 28 Nov)
   art_director: true
   art_tags: true
   alexa: true

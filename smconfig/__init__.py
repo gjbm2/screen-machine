@@ -70,6 +70,8 @@ CAPABILITIES: dict[str, str] = {
     "sonos": "Sonos zones (room/sonos.json)",
     "karaoke": "karaoke: song requests, vocal removal (host.karaoke_python venv) and lyrics on the display page (docs/KARAOKE.md)",
     "phone_tunnel": "a Cloudflare quick tunnel so phones reach the karaoke panel on any Wi-Fi (routes/phone_door.py)",
+    "api": "the generation API for other apps and agents: /api/v1 with API keys (Settings › Apps & API keys; "
+           "docs/API.md; needs generation)",
     "accounts": "sign-in, roles and per-person Generated spaces (client ID and people in private/accounts.yaml, "
                 "rules in config/auth/gates.yaml; docs/ACCOUNTS.md)",
 }

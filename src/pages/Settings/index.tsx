@@ -1,7 +1,8 @@
 // /settings: everything set occasionally or once (owner, 24 Oct: "where are settings? isn't that a standard thing to
 // expose in sensible places?"; the plan is ia.txt §2). One page of folds, in a fixed order, each its own file:
-//   This device · People (once sign-in is set up) · Room & modes · Screens (one fold per screen) · Look · Lights ·
-//   Listening & AI · Music & piano · Sound & timing · Schedules · Connection · Developer
+//   This device · People (once sign-in is set up) · Apps & API keys (with the `api` capability) · Room & modes ·
+//   Screens (one fold per screen) · Look · Lights · Listening & AI · Music & piano · Sound & timing · Schedules ·
+//   Connection · Developer
 // Each fold can be linked to as /settings#<group> (#screen-<id> for one screen): the Room page's folds end with a
 // "… settings ›" link to theirs, and the menu has a Settings row. With no hash every fold starts closed.
 //
@@ -29,6 +30,7 @@ import type { ShowTestView } from "@/pages/Room/types";
 import { useDescribe } from "@/pages/Room/useDescribe";
 import { zoneOf } from "@/pages/Room/zones";
 import { useRoomConnection } from "@/pages/Room/useRoomConnection";
+import { ApiKeysGroup } from "./ApiKeys";
 import { ConnectionGroup } from "./Connection";
 import { DeveloperGroup } from "./Developer";
 import { DeviceGroup } from "./Device";
@@ -153,6 +155,7 @@ export default function SettingsPage() {
         <main className="divide-y divide-stone-200/80 border-y border-stone-200/80 mt-2" data-testid="settings-page">
           <DeviceGroup api={room.api} showTest={showTest} />
           <PeopleGroup />
+          <ApiKeysGroup />
           <ModesGroup
             api={room.api}
             status={status}

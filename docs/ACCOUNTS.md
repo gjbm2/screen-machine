@@ -92,6 +92,13 @@ with a role to pick, and adds someone by e-mail before they first sign in. The l
   - The unlock is a signed `sm_unlock` cookie bound to the account. The lock applies even with accounts off.
   - Processes on this machine and schedules always see the hidden buckets.
 
+## API keys
+
+Other apps and agents use the generation API (`/api/v1`) with API keys, which admins make on Settings › Apps & API keys:
+see docs/API.md. A key's request counts as a guest (approved, if the key has the private catalogue) whose space is
+the space of whoever made the key. It works on `/api/v1` only, and its gates are `config/auth/gates.yaml`'s
+`role: key` rules, which hold whether sign-in is on or off.
+
 ## Not yet
 
 - room_service's own setup routes (`:8700`, `/rs/*`: lights patch, modes editor, devices, remote learning) are not

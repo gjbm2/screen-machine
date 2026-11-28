@@ -1,8 +1,10 @@
 # Who may call what in the Flask API (routes/auth/gates.py; docs/ACCOUNTS.md). Only enforced while the deployment's
-# `accounts` capability is on and it names a Google client ID. Processes on this machine pass every gate.
+# `accounts` capability is on and it names a Google client ID, except `role: key` (an API key), which always is.
+# Processes on this machine pass every gate.
 #
-# A rule: {path: regex on the request path, methods: [..] (default all), role: guest|approved|admin|destination,
-# body: [JSON body keys naming destinations]}. Every matching rule must pass; anything no rule matches is open.
+# A rule: {path: regex on the request path, methods: [..] (default all), role: guest|approved|admin|destination|key,
+# body: [JSON body keys naming destinations], scope: (role key) a scope the API key needs}. Every matching rule must
+# pass; anything no rule matches is open.
 # `destination` = the role in that destination's `access` (publish-destinations.json; default admin).
 #
 # The split (owner, 19 Nov): guests operate (generate, publish to and browse the screens open to them, run those
@@ -49,6 +51,14 @@ rules:
   - {path: '^/api/sound/flash$', methods: [PUT], role: admin}                # a screen flashing for the camera
   - {path: '^/api/auth/people$', role: admin}   # Settings › People: who has which role
   - {path: '^/api/auth/unlock$', role: admin}   # the hidden buckets' PIN (routes/auth/lock.py)
+  - {path: '^/api/auth/keys', role: admin}     # Settings › Apps & API keys (routes/auth/keys.py)
   - {path: '^/api/bakeoff/', role: admin}
   - {path: '^/api/art-tags/sweep$', role: admin}
   - {path: '^/api/files', role: admin}
+
+  # --- the generation API for other apps and agents (owner, 28 Nov; routes/api_v1, docs/API.md). An API key on every
+  #     call but the index and the spec, with accounts on or off; making needs `generate`, and a screen in publish_to
+  #     needs `publish` and that screen on the key
+  - {path: '^/api/v1/(?!openapi\.json$).+', role: key}
+  - {path: '^/api/v1/generations$', methods: [POST], role: key, scope: generate, body: [publish_to]}
+  - {path: '^/api/v1/generations/[^/]+$', methods: [DELETE], role: key, scope: generate}
