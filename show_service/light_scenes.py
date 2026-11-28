@@ -259,12 +259,14 @@ def lands_of(entry: Any) -> frozenset:
 
 
 def pick_lineup(lineups: Mapping[str, Mapping[str, Any]], into: Optional[str], drive: float, rng: Any,
-                avoid: Optional[str] = None, over: Optional[set] = None) -> Optional[str]:
+                avoid: Optional[str] = None, over: Optional[set] = None, fullest: bool = False) -> Optional[str]:
     """A line-up for a section of kind ``into`` (None: unknown) at the music's ``drive``: a weighted draw over the
     ones whose ``into`` names that section (with none, or no known section, the ``any`` ones), x LINEUP_OFF_DRIVE
     outside their drive band; never ``avoid`` (the one playing) while another fits. ``over``: only line-ups that
-    play every group in it and at least one more (a section that has grown since it last came round). None with
-    none."""
+    play every group in it and at least one more (a section that has grown since it last came round). ``fullest``:
+    only those that play the most groups (the song's high point: the full rig, or all of it the idiom lets play;
+    docs/LIGHT_DESIGN_NOTES.md (c). 28 Nov: with "everything" held back by the idiom, the draw over the rest gave
+    Creep's climax the spots alone and Can't Help Falling in Love's one group of pars). None with none."""
     named = [n for n, e in lineups.items() if into is not None and into in e["into"]]
     anys = [n for n, e in lineups.items() if "any" in e["into"]]
     if over is not None:                                   # grown: the section's own bigger ones, else any bigger one
@@ -272,6 +274,9 @@ def pick_lineup(lineups: Mapping[str, Mapping[str, Any]], into: Optional[str], d
         pool = bigger(named) or bigger(anys)
     else:
         pool = named or anys                               # the section's own, when it has any
+    if fullest and pool:
+        most = max(len(lineups[n]["plays"]) for n in pool)
+        pool = [n for n in pool if len(lineups[n]["plays"]) == most]
     ws: dict[str, float] = {}
     for name in pool:
         e = lineups[name]

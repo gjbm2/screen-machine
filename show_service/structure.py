@@ -1655,6 +1655,11 @@ class Structure:
         beats = ahead / grid.beat_s
         lead = self.cfg["events"]["min_lead_s"]
         if beats <= b["arm_beats"] and beats >= ARM_MIN_BEATS and ahead >= lead:
+            if self._plan_on() and not self._plan_has_line(line, grid):
+                return                                   # the lyrics say where sections are (as _predict): a line the
+                                                         # song's own map puts no section at is a guess, not a drop
+                                                         # to cut to ahead of the sound (28 Nov eval: 7 of 9 armed
+                                                         # lines in karaoke were mid-section, their tokens refunded)
             if self.armed is None or abs(self.armed["line"] - line) > LINE_MOVED_BEATS * grid.beat_s:
                 eid = self.armed.get("id") if self.armed is not None else None    # a moved line: the same arm
                 if self.armed is not None:
@@ -1821,6 +1826,15 @@ class Structure:
 
     def _plan_on(self) -> bool:
         return self._plan is not None and not self._plan["paused"]
+
+    def _plan_has_line(self, line_s: float, grid: _Grid) -> bool:
+        """Does the lyric plan put a section's start within a bar of ``line_s``? (The ear's drop line is a phrase
+        line; the plan's is the lyric's own time, snapped to the bar while the clock is sure.)"""
+        pl = self._plan
+        if pl is None:
+            return False
+        tol = max(1.0, float(grid.bar_s or 0.0))
+        return any(abs(pl["start"] + float(x["pos_s"]) - line_s) <= tol for x in pl["secs"])
 
     def _lyric_plan(self, now_s: float, grid: _Grid) -> None:
         """Announce the plan's next section as a predicted section_change (detail "lyrics", with its letter and

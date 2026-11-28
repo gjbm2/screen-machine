@@ -3604,7 +3604,8 @@ class Director:
                 if name is None:
                     name, how = mem["lineup"], "recalled"
             if name is None:
-                name = lscenes.pick_lineup(lus, draw_into, drive, self._fx_rng, avoid=self._lineup)
+                name = lscenes.pick_lineup(lus, draw_into, drive, self._fx_rng, avoid=self._lineup,
+                                           fullest=draw_into in BIG_SECTIONS)   # the high point: the full rig it may
         except Exception:                                 # a broken catalogue never fails the tick
             log.exception("line-ups: pick failed")
             name = None

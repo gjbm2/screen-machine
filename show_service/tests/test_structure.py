@@ -1644,3 +1644,29 @@ def test_an_open_forecast_window_makes_the_ears_keener():
     assert keen.s.snapshot()["forecast_boost"] == 0.8 and len(b) == 1 and b[0]["boost"] == 0.8
     assert abs(b[0]["t_s"] - 30.0) <= 1.0 and b[0]["novelty"] < b[0]["threshold"]   # under the plain threshold
     assert not keen.kinds("track_change")
+
+
+def test_under_a_lyric_plan_a_drop_line_is_armed_only_where_the_plan_has_a_section():
+    """28 Nov (ad-improve): with a karaoke song's lyric plan on, the ear's predicted drop line is armed only where the
+    plan puts a section within a bar of it; elsewhere it is a guess (7 of 9 armed lines in the eval's karaoke replays
+    were mid-section, their tokens refunded, and one cut ahead of Hallelujah's first chorus). The drop itself, when the
+    sound really drops, is still heard."""
+    def plan(r: Rig, secs):
+        return lambda: {"key": "karaoke:k1:q1", "state": "playing", "pos_s": r.t, "dur_s": 200.0, "speed": 1.0,
+                        "title": "Song", "source": "karaoke", "sections": secs}
+    # the riser's line is the 16-bar line at 30 s; the plan's sections begin at 0 and 60: no line is armed
+    r = Rig(riser, clock=lambda t: clock_body(t, bpm=BPM))
+    r.ctx.now_playing = plan(r, [{"pos_s": 0.0, "kind": "verse", "letter": "A"},
+                                 {"pos_s": 60.0, "kind": "chorus", "letter": "B"}])
+    r.run(40.0)
+    assert r.kinds("build")                                                # the build is still heard
+    assert not r.kinds("drop_armed")
+    d = r.kinds("drop")
+    assert len(d) == 1 and d[0]["at_ms"] == pytest.approx(30000.0, abs=1.0)    # ... and so is the drop itself
+    # the plan puts a chorus on the line (within a bar): armed as before
+    r = Rig(riser, clock=lambda t: clock_body(t, bpm=BPM))
+    r.ctx.now_playing = plan(r, [{"pos_s": 0.0, "kind": "verse", "letter": "A"},
+                                 {"pos_s": 30.5, "kind": "chorus", "letter": "B"}])
+    r.run(40.0)
+    arm = r.kinds("drop_armed")
+    assert arm and arm[0]["at_ms"] == pytest.approx(30000.0, abs=1.0) and arm[0]["eta_beats"] is not None

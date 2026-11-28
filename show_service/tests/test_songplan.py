@@ -121,3 +121,24 @@ def test_what_carries_the_beat_is_a_pulse_not_bar_locked_movement():
     assert ls.carries_beat({"layers": [], "hits": {"styles": ["beat"]}})
     assert not ls.carries_beat({"layers": [{"id": "s", "kind": "position", "mode": "sweep", "phase": "bar",
                                             "needs": "grid"}], "hits": {"styles": []}})
+
+
+def test_the_songs_high_point_draws_the_fullest_line_up_the_idiom_lets_play():
+    """28 Nov (ad-improve): "everything" is the only line-up written for final_chorus and climax; when an idiom holds
+    one of its groups back the draw fell to the ``any`` pool by drive band, where a one-group line-up still has a tenth
+    of a weight (Creep's climax: the spots alone; Can't Help Falling in Love's: the pars alone). The high point takes
+    the fullest line-up left."""
+    cat = {"spots-alone": {"plays": ["b"], "into": ["verse", "any"], "drive": [0.0, 0.45]},
+           "pars-and-spots": {"plays": ["a", "b"], "into": ["verse", "any"], "drive": [0.2, 0.75]},
+           "pars-spots-flash": {"plays": ["a", "b", "d"], "into": ["chorus", "any"], "drive": [0.6, 1.0]},
+           "everything": {"plays": ["a", "b", "c", "d"], "into": ["final_chorus", "climax"], "drive": [0.0, 1.0]}}
+    lus = ls.parse_lineups(cat, {"a", "b", "c", "d"}, [])
+    rng = random.Random(3)
+    # the idiom lets everything play: everything, as before
+    assert {ls.pick_lineup(lus, "climax", 1.0, rng, fullest=True) for _ in range(20)} == {"everything"}
+    # the idiom holds c back (no "everything"): the fullest of the rest, never a one-group line-up
+    rest = {n: e for n, e in lus.items() if "c" not in e["plays"]}
+    assert {ls.pick_lineup(rest, "climax", 1.0, rng, fullest=True) for _ in range(40)} == {"pars-spots-flash"}
+    assert {ls.pick_lineup(rest, "final_chorus", 0.7, rng, fullest=True) for _ in range(40)} == {"pars-spots-flash"}
+    # without the flag the old draw stands (a verse may be small)
+    assert "spots-alone" in {ls.pick_lineup(rest, "verse", 0.3, rng) for _ in range(60)}

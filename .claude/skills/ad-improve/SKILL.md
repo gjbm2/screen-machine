@@ -72,9 +72,12 @@ Read `ad_feedback.jsonl` before choosing what to work on. Two kinds of note:
    - Runs average 3 draws per song (`--seeds`, default 3). Never use fewer: one draw moves a song's overall by up
      to 0.25. A full run takes about 30 min, so when time is tight, check the attempt on its own 2–3 songs first
      (`--songs`) and cut songs, never seeds.
-   - **Keep the fix** if the overall score rises by more than the run's seed spread (`overall_spread`; a smaller gain
-     is noise), no dimension falls past its spread, every `good` verdict still
-     holds, and no `bad` verdict that passed before now fails.
+   - The draws are fixed per seed, so compare **paired**: each song × seed against the same song × seed in the
+     baseline. A difference there is the fix, not noise; the spread across seeds says nothing about it.
+   - **Keep the fix** if: the overall score doesn't fall; the songs the fix was aimed at rise (their mean paired gain is
+     above 0, and most of their song × seed pairs rise); no song's overall falls by more than 0.02 paired; the target
+     dimension rises; controls still pass; every `good` verdict still holds; and no `bad` verdict that passed before
+     now fails.
    - **Else undo your change in the copy:** restore the files from the real tree's HEAD, e.g.
      `git -C <repo> show HEAD:<path> > $AD_EVAL_TREE/<path>`.
 6. **Kept:**
