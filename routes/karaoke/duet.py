@@ -46,6 +46,10 @@ NAMES_PITCH_S = 5.0                 # the two voices this many semitones apart (
                                     # 3 to 7 scored the same on the eval
 BOTH_BELOW = 0.1                    # a solo line this little nearer one voice than the other: both singing (eval 28 Nov:
                                     # +5 right lines; 0.2 the same, 0 fewer)
+SECOND_DB = None                    # the second voice this many dB over the song's quiet level: both singing (None: off)
+SECOND_QUIET_PCT = 20               # the song's quiet level: this percentile of its lines' second-voice levels
+SECOND_OTHER = False                # ... and it must sound like the other singer
+SECOND_SOLO = False                 # a line the AI calls both, the second voice quiet: the lead's voice
 WORDS_TO_HEAR = 2                   # the sound overrules the AI only on a line with this many real words: a wail
                                     # ("ha-ah-ah") doesn't sound like its singer's voice
 DUET_MIN_LINES = 3                  # each voice confirmed (the AI and the sound agree) on at least this many lines
@@ -285,6 +289,26 @@ def decide(n: int, prior: Optional[Mapping[str, Any]], heard: Sequence[Optional[
     for i in range(n):
         if parts[i] in SOLO and m[i] is not None and abs(m[i]) < BOTH_BELOW:
             parts[i] = "both"
+    # The second voice (voices.py --second: every voice in the backing track): a line it sings through, loud against
+    # the song's own quiet level (and, with SECOND_OTHER, sounding like the other singer), is both; a line the AI
+    # calls both that it doesn't, is the lead's voice.
+    sdb = [h.get("second_db") if isinstance(h, Mapping) else None for h in heard]
+    have_db = [x for x in sdb if x is not None and x > -100]
+    if SECOND_DB is not None and len(have_db) >= 8:
+        quiet = float(np.percentile(have_db, SECOND_QUIET_PCT))
+        semb = [_unit(np.asarray(h["second_emb"], dtype=np.float64))
+                if isinstance(h, Mapping) and h.get("second_emb") else None for h in heard]
+        for i in range(n):
+            if parts[i] not in ("A", "B", "both") or sdb[i] is None:
+                continue
+            loud = sdb[i] - quiet >= SECOND_DB
+            if loud and SECOND_OTHER and semb[i] is not None and m[i] is not None:
+                this, other = (ca, cb) if m[i] > 0 else (cb, ca)
+                loud = float(semb[i] @ other) > float(semb[i] @ this)
+            if loud and parts[i] in SOLO:
+                parts[i] = "both"
+            elif not loud and parts[i] == "both" and SECOND_SOLO and m[i] is not None:
+                parts[i] = "A" if m[i] > 0 else "B"
     # A line too short to hear keeps the AI's part when the lines either side of it are that voice too.
     for i in range(n):
         if parts[i] is None and ai[i] in SOLO and m[i] is None:
