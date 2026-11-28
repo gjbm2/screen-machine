@@ -10,6 +10,7 @@ from utils.logger import error
 
 from .api import karaoke_api, store
 from . import pictures  # noqa: F401 - its routes join karaoke_api; its thread starts in start()
+from . import singer_photos  # noqa: F401 - its routes join karaoke_api
 from . import room_song  # noqa: F401 - GET /api/songs/now joins karaoke_api; its Sonos watch starts in start()
 from .store import song_dir
 from .worker import Worker, audio_seconds

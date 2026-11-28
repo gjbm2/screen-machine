@@ -121,6 +121,8 @@ export interface KaraokeState {
   now: number;
   /** The names given songs in the last 12 hours, most recent first: the singer box's suggestions. */
   singers?: string[];
+  /** Each name with its own photo -> the photo's URL (routes/karaoke/singer_photos.py). */
+  singer_photos?: Record<string, string>;
 }
 
 /** The speaker-delay calibration (routes/karaoke/calibrate.py): while running, the chirps every output window plays
@@ -146,6 +148,8 @@ export interface KaraokeNow {
   up_next: { id: string; title: string; artist: string; singers?: string[] } | null;
   /** Who sing the song on now, if anyone said. */
   singers?: string[];
+  /** The photos of the singers on now and next: name -> URL (names without one left out). */
+  singer_photos?: Record<string, string>;
   /** Entries after the one on now, ready or still being made (0: the screens ask for more). */
   queued_after?: number;
   /** The panel's address for a phone (null: unknown) and whether the room is in a karaoke mode: the screens' QR. */
@@ -290,6 +294,15 @@ export const karaoke = {
     call<{ ok: boolean }>('/heard', post({ rev, song_id, pos_s })),
   /** Tonight's names, set before anyone sings. */
   roster: (body: { add?: string[]; remove?: string[] }) => call<{ singers: string[] }>('/singers', post(body)),
+  /** Set (or replace) a name's photo -> every name's photo. */
+  singerPhoto: (name: string, photo: Blob) => {
+    const f = new FormData();
+    f.append('name', name);
+    f.append('photo', photo, 'photo.jpg');
+    return call<{ photos: Record<string, string> }>('/singers/photo', { method: 'POST', body: f });
+  },
+  dropSingerPhoto: (name: string) =>
+    call<{ photos: Record<string, string> }>(`/singers/photo?name=${encodeURIComponent(name)}`, { method: 'DELETE' }),
   /** A new session: tonight's names and the songs already sung are cleared. */
   newSession: () => call<{ singers: string[] }>('/session', post({ op: 'new' })),
   settings: (s: Partial<KaraokeSettings>) => call<{ settings: KaraokeSettings }>('/settings', post(s)),

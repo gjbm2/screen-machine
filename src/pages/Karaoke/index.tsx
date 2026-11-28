@@ -117,7 +117,7 @@ import { LightsPanel } from "@/components/room/LightsNow";
 import { roomApi } from "@/components/room/roomLink";
 import { SongPictures } from "./SongPictures";
 import { LoopbackToggle, RoomMicCheck } from "./RoomMic";
-import { Roster, SingerAsk, SingerTag, askSingers } from "./Singer";
+import { Roster, SingerAsk, SingerTag, askSingers, setPhotos } from "./Singer";
 import { OutputTiming } from "@/components/sound/OutputTiming";
 import { OutputEq } from "@/components/sound/OutputEq";
 import { SoundOutputSelect } from "@/components/sound/SoundOutputSelect";
@@ -267,6 +267,7 @@ export default function KaraokePage() {
       const s = await karaoke.state();
       skewRef.current = s.now - (sent + Date.now()) / 2000;
       if (!draggingRef.current) setSt(s);
+      setPhotos(s.singer_photos);
       setErr(null);
     } catch (e) {
       setErr(String((e as Error).message || e));

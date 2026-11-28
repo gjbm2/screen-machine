@@ -15,10 +15,17 @@
 // Small on a phone (owner, 27 Nov: "you may need to make fonts slightly smaller for mobile display"), sm: and up as
 // the rest of the panel.
 
-import { useEffect, useState, type PointerEvent } from "react";
-import { MicVocal, Plus, X } from "lucide-react";
+import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent } from "react";
+import { Camera, Loader2, MicVocal, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { karaoke } from "@/shared/api/karaoke";
 import { cn } from "@/lib/utils";
 import { THEME_CLASS } from "@/pages/Room/theme";
 
@@ -43,6 +50,132 @@ export function singersNow(): string[] {
   } catch {
     return [];
   }
+}
+
+// ---- the singers' own photos (owner, 28 Nov: "optionally for singers to upload photo (e.g. from phone camera),
+// exposed ... by e.g. clicking their lozenge"; the screens show them, and the photo scenes: routes/karaoke/singer_photos.py).
+// Every name's photo URL, from /state (setPhotos) or an upload's reply, shared by every chip on the page.
+let photoMap: Record<string, string> = {};
+const photoSubs = new Set<() => void>();
+export function setPhotos(m: Record<string, string> | undefined) {
+  const next = m ?? {};
+  if (JSON.stringify(next) === JSON.stringify(photoMap)) return;
+  photoMap = next;
+  photoSubs.forEach((f) => f());
+}
+const photoOf = (m: Record<string, string>, n: string) =>
+  m[n] ?? Object.entries(m).find(([k]) => k.toLowerCase() === n.toLowerCase())?.[1];
+function usePhotos() {
+  return useSyncExternalStore(
+    (f) => (photoSubs.add(f), () => photoSubs.delete(f)),
+    () => photoMap,
+  );
+}
+
+const PHOTO_PX = 1600; // as the server keeps it: a phone's 12 MP photo goes up as ~300 kB, not 5 MB
+
+/** The picked file, upright (the browser reads its orientation) and at most PHOTO_PX, as a JPEG; else the file. */
+async function shrink(file: File): Promise<Blob> {
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const k = Math.min(1, PHOTO_PX / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * k);
+    c.height = Math.round(bmp.height * k);
+    c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close();
+    const b = await new Promise<Blob | null>((ok) => c.toBlob(ok, "image/jpeg", 0.88));
+    return b ?? file;
+  } catch {
+    return file;
+  }
+}
+
+/** One name as a chip: its photo (or a small camera) and the name; tapping it takes or picks a photo (the phone offers
+ *  its camera or its gallery), or with one already, a new one or none. × takes the name off. */
+function NameChip({ name, onRemove, keep }: { name: string; onRemove: () => void; keep: (e: PointerEvent) => void }) {
+  const photo = photoOf(usePhotos(), name);
+  const file = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const pick = () => file.current?.click();
+  const send = async (f: File | undefined) => {
+    if (!f) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      setPhotos((await karaoke.singerPhoto(name, await shrink(f))).photos);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const face = busy ? (
+    <Loader2 className="h-3 w-3 animate-spin sm:h-3.5 sm:w-3.5" />
+  ) : photo ? (
+    <img src={photo} alt="" className="h-5 w-5 rounded-full object-cover sm:h-6 sm:w-6" />
+  ) : (
+    <Camera className={cn("h-3 w-3 sm:h-3.5 sm:w-3.5", failed ? "text-red-600" : "opacity-50")} />
+  );
+  const label = (
+    <>
+      {face}
+      <span className="truncate">{name}</span>
+    </>
+  );
+  const btn = "flex min-w-0 items-center gap-1 rounded-full";
+  return (
+    <span
+      className={cn(
+        "flex max-w-[10rem] items-center gap-0.5 rounded-full bg-primary/10 py-0.5 pr-0.5 text-xs font-medium sm:text-sm",
+        photo && !busy ? "pl-0.5" : "pl-1.5",
+      )}
+    >
+      <input
+        ref={file}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          void send(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+      {photo ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className={btn} aria-label={`${name}'s photo`}>
+              {label}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className={THEME_CLASS}>
+            <DropdownMenuItem onSelect={pick}>
+              <Camera className="mr-2 h-4 w-4" /> New photo
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={async () => setPhotos((await karaoke.dropSingerPhoto(name).catch(() => null))?.photos ?? photoMap)}
+            >
+              <X className="mr-2 h-4 w-4" /> Remove photo
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <button type="button" className={btn} onClick={pick} aria-label={`A photo of ${name}`}>
+          {label}
+        </button>
+      )}
+      <button
+        type="button"
+        aria-label={`Not ${name}`}
+        onPointerDown={keep}
+        onClick={onRemove}
+        className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+      >
+        <X className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+      </button>
+    </span>
+  );
 }
 
 function NamePicker({
@@ -82,21 +215,7 @@ function NamePicker({
     <div className="min-w-0 flex-1">
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         {value.map((n) => (
-          <span
-            key={n}
-            className="flex max-w-[10rem] items-center gap-0.5 rounded-full bg-primary/10 py-0.5 pl-2 pr-0.5 text-xs font-medium sm:text-sm"
-          >
-            <span className="truncate">{n}</span>
-            <button
-              type="button"
-              aria-label={`Not ${n}`}
-              onPointerDown={keep}
-              onClick={() => onChange(value.filter((x) => x !== n))}
-              className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-            </button>
-          </span>
+          <NameChip key={n} name={n} keep={keep} onRemove={() => onChange(value.filter((x) => x !== n))} />
         ))}
         <input
           value={text}

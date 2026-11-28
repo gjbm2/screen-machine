@@ -26,6 +26,31 @@ export function namesText(names: string[] | undefined | null): string {
   return n.length < 2 ? (n[0] ?? "") : `${n.slice(0, -1).join(", ")} & ${n[n.length - 1]}`;
 }
 
+/** The photos as overlapping rounds, ``size`` across (a CSS length). */
+export function Faces({ photos, size }: { photos: string[]; size: string }) {
+  if (!photos.length) return null;
+  return (
+    <span style={{ display: "inline-flex", flexShrink: 0, verticalAlign: "middle" }}>
+      {photos.slice(0, 4).map((u, i) => (
+        <img
+          key={u}
+          src={u}
+          alt=""
+          style={{
+            width: size,
+            height: size,
+            borderRadius: "50%",
+            objectFit: "cover",
+            border: "0.12em solid rgba(255,255,255,0.9)",
+            boxShadow: "0 0.1em 0.4em rgba(0,0,0,0.6)",
+            marginLeft: i ? `calc(${size} * -0.28)` : 0,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
 /** The address without its scheme, for reading off the screen. */
 const shortUrl = (url: string) => url.replace(/^https?:\/\//, "");
 
@@ -74,6 +99,7 @@ export function NextUp({
   title,
   artist,
   singers,
+  photos = [],
   opacity,
   left,
   inS,
@@ -81,6 +107,8 @@ export function NextUp({
   title: string;
   artist: string;
   singers?: string[];
+  /** The next singers' own photos (KaraokeLayer). */
+  photos?: string[];
   opacity: number;
   /** The bar: how much of the last NEXT_UP_S is left, 0-1; null: none. */
   left?: number | null;
@@ -109,6 +137,11 @@ export function NextUp({
       }}
     >
       <div style={{ fontSize: "min(2.3vw, 38px)", fontWeight: 800, lineHeight: 1.15 }}>
+        {photos.length > 0 && (
+          <span style={{ marginRight: "0.35em" }}>
+            <Faces photos={photos} size="1.6em" />
+          </span>
+        )}
         {singer ? `${singer}, you're up next` : "Up next"}
         {inS != null && (
           <span style={{ fontWeight: 600, opacity: 0.85, fontVariantNumeric: "tabular-nums" }}>

@@ -29,7 +29,7 @@ import {
   type LyricLine,
 } from "@/shared/api/karaoke";
 import { sound } from "@/shared/api/sound";
-import { JoinCard, LOW_FROM_S, NEXT_UP_S, NextUp, namesText } from "./JoinOverlays";
+import { Faces, JoinCard, LOW_FROM_S, NEXT_UP_S, NextUp, namesText } from "./JoinOverlays";
 import { Presence } from "./Presence";
 
 const POLL_MS = 1000;
@@ -712,7 +712,13 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
       {handover !== null && <Handover key={handover} onDone={() => setHandover(null)} />}
       {active && song && (
         <>
-          <Curtain t={t} song={song} doc={lyrics?.id === song.id ? lyrics.doc : null} singer={namesText(now.singers)} />
+          <Curtain
+            t={t}
+            song={song}
+            doc={lyrics?.id === song.id ? lyrics.doc : null}
+            singer={namesText(now.singers)}
+            photos={photosOf(now.singers, now.singer_photos)}
+          />
           <Lyrics
             t={t}
             doc={lyrics?.id === song.id ? lyrics.doc : null}
@@ -724,7 +730,14 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
       )}
       {/* every overlay comes and goes through Presence: it rises or slides in out of a blur, and sinks back out */}
       <Presence show={!active && !!now.up_next}>
-        {now.up_next && <UpNext title={now.up_next.title} artist={now.up_next.artist} singer={namesText(now.up_next.singers)} />}
+        {now.up_next && (
+          <UpNext
+            title={now.up_next.title}
+            artist={now.up_next.artist}
+            singer={namesText(now.up_next.singers)}
+            photos={photosOf(now.up_next.singers, now.singer_photos)}
+          />
+        )}
       </Presence>
       <Presence show={!!(resting && joinUrl)} from="right">
         {joinUrl && <JoinCard url={joinUrl} />}
@@ -735,6 +748,7 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
             title={now.up_next.title}
             artist={now.up_next.artist}
             singers={now.up_next.singers}
+            photos={photosOf(now.up_next.singers, now.singer_photos)}
             opacity={1}
             left={left != null ? Math.min(1, left / NEXT_UP_S) : null}
             inS={left != null && left > NEXT_UP_S ? left : null}
@@ -837,16 +851,23 @@ function Handover({ onDone }: { onDone: () => void }) {
   return <div ref={ref} style={{ position: "absolute", inset: 0, background: "#000", opacity: OUTRO_VEIL }} />;
 }
 
+/** The singers' own photos (routes/karaoke/singer_photos.py; owner, 28 Nov), in the names' order. */
+function photosOf(names: string[] | undefined, map: Record<string, string> | undefined): string[] {
+  return (names ?? []).map((n) => map?.[n]).filter((u): u is string => !!u);
+}
+
 function Curtain({
   t,
   song,
   doc,
   singer,
+  photos = [],
 }: {
   t: number;
   song: KaraokeSong;
   doc: KaraokeLyrics | null;
   singer?: string | null;
+  photos?: string[];
 }) {
   const lines = doc?.kind === "synced" ? doc.lines : [];
   const first = lines.find((l) => l.start != null)?.start ?? null;
@@ -884,7 +905,13 @@ function Curtain({
               <div
                 style={{ fontSize: "min(5vw, 84px)", fontWeight: 800, lineHeight: 1.05, color: "#ffd65a", marginBottom: "0.25em", ...BALANCE }}
               >
-                <span aria-hidden style={{ fontSize: "0.8em", marginRight: "0.25em" }}>🎤</span>
+                {photos.length ? (
+                  <span style={{ marginRight: "0.3em" }}>
+                    <Faces photos={photos} size="1.5em" />
+                  </span>
+                ) : (
+                  <span aria-hidden style={{ fontSize: "0.8em", marginRight: "0.25em" }}>🎤</span>
+                )}
                 {singer}
               </div>
             )}
@@ -1645,7 +1672,17 @@ function CountIn({ seconds, total }: { seconds: number; total: number }) {
   );
 }
 
-function UpNext({ title, artist, singer }: { title: string; artist: string; singer?: string | null }) {
+function UpNext({
+  title,
+  artist,
+  singer,
+  photos = [],
+}: {
+  title: string;
+  artist: string;
+  singer?: string | null;
+  photos?: string[];
+}) {
   return (
     <div style={{ ...lyricsBoxStyle, bottom: "6vh" }}>
       <div
@@ -1656,6 +1693,11 @@ function UpNext({ title, artist, singer }: { title: string; artist: string; sing
           opacity: 0.9,
         }}
       >
+        {photos.length > 0 && (
+          <span style={{ marginRight: "0.4em" }}>
+            <Faces photos={photos} size="1.6em" />
+          </span>
+        )}
         {singer ? `Up next, ${singer}: ` : "Up next: "}
         <b>{title}</b>
         {artist ? ` — ${artist}` : ""}

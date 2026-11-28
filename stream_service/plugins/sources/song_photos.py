@@ -62,7 +62,9 @@ NO_FACE = (0.5, 0.3, 0.25)   # a photo with no face box: its subject in the uppe
 BEAT_GAP_S = 1.6         # no beat for this long: the clock runs on time (BEAT_S a beat)
 BEAT_S = 0.5
 SYNC_DECODE = False      # tools/fxtest: decode on the render thread (short renders have the photo from frame 1)
-KIND_WEIGHT = {"live": 2.5, "group": 2.0, "portrait": 1.0}   # performing first (owner, 26 Nov)
+KIND_WEIGHT = {"live": 2.5, "group": 2.0, "portrait": 1.0,   # performing first (owner, 26 Nov)
+               "singer": 2.5}                               # the guest singing now (their own photo, owner 28 Nov)
+SINGER_EVERY = 6         # ...who comes round about this often, however many photos the artist has
 KIND_FIT = {"chorus": {"live": 1.6, "group": 1.6}, "verse": {"portrait": 1.5}}
 
 # panel floats: 0 slot | 1 cx | 2 cy | 3 half w | 4 half h (screen px) | 5 cos | 6 sin | 7 s (image px per panel px)
@@ -343,6 +345,11 @@ class SongPhotos(Source):
             # the most engaging first time round (the list is), shuffled after that
             self.bag = (list(self.order) if not self.shown
                         else [self.order[i] for i in self.rng.permutation(len(self.order))])
+            # the singer's own photo comes round more often than once a bag (it leads the list, so it is also first)
+            own = [i for i in self.order if self.pics[i].kind == "singer"]
+            if own:
+                for at in range(SINGER_EVERY, len(self.bag), SINGER_EVERY):
+                    self.bag.insert(at, own[(at // SINGER_EVERY) % len(own)])
         fit = KIND_FIT.get(self._section() or "", {})
         cands = [i for i in self.bag if i not in avoid][:5] or self.bag[:5]
         w = np.array([KIND_WEIGHT.get(self.pics[i].kind, 0.5) * fit.get(self.pics[i].kind, 1.0)

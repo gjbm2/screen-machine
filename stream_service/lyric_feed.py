@@ -250,6 +250,18 @@ def picture_set(sid: str, o: Any) -> Optional[PictureSet]:
                       o.get("era") if isinstance(o.get("era"), str) else None, tuple(out), tuple(clips))
 
 
+def with_singers(ps: Optional[PictureSet], rows: Any, sid: str) -> Optional[PictureSet]:
+    """The song's pictures with the singers' own photos first (owner, 28 Nov: "inject the current singer into the
+    photostream"): /api/karaoke/now's ``singer_pictures`` (routes/karaoke/singer_photos.py), kind "singer"."""
+    own = picture_set(sid, {"pictures": rows}) if isinstance(rows, list) and rows else None
+    if own is None:
+        return ps
+    if ps is None:
+        return own
+    pics = own.pictures + ps.pictures
+    return PictureSet(f"{ps.key}+{','.join(p.id for p in own.pictures)}", ps.song, ps.era, pics, ps.clips)
+
+
 @dataclass(frozen=True)
 class Snapshot:
     """What the feed read last (immutable, swapped by reference)."""
@@ -349,6 +361,8 @@ class LyricFeed:
         except (TypeError, ValueError, AttributeError):
             delay, shift, pos, at = 0.0, 0.0, 0.0, time.time()
         pics = self._pictures(str(sid)) if state != "stopped" and sid else None
+        if state != "stopped" and sid:
+            pics = with_singers(pics, o.get("singer_pictures"), str(sid))
         curve = self._curve(str(sid)) if state != "stopped" and sid else None
         self.snap = Snapshot(song, state, pos, at, shift, self._mono(), pics, str(sid) if sid else None, delay, curve)
 

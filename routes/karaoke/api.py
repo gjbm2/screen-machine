@@ -73,8 +73,9 @@ def _only_when_on():
 def state():
     from . import sonos_driver
     d = sonos_driver()
+    from . import singer_photos
     return jsonify({**store().snapshot(), "calibration": calibration_view(),
-                    "sonos_error": d.error if d is not None else None})
+                    "sonos_error": d.error if d is not None else None, "singer_photos": singer_photos.photos()})
 
 
 @karaoke_api.get("/karaoke/now")
@@ -82,9 +83,15 @@ def now():
     from . import room_in_karaoke
     from .join import join_url
     # join: the panel's address for a phone and whether the room is in a karaoke mode (the screens' QR code at rest)
+    from . import singer_photos
     c = calibration_view()
-    return jsonify({**store().now_playing(), "calibration": c if (c or {}).get("state") == "running" else None,
-                    "join": {"url": join_url(), "room_karaoke": room_in_karaoke()}})
+    n = store().now_playing()
+    on = n.get("singers") or []
+    # the singers' own photos: the overlays' (on now and next), and the photo scenes' (on now: stream_service lyric_feed)
+    return jsonify({**n, "calibration": c if (c or {}).get("state") == "running" else None,
+                    "join": {"url": join_url(), "room_karaoke": room_in_karaoke()},
+                    "singer_photos": singer_photos.photos_of([*on, *((n.get("up_next") or {}).get("singers") or [])]),
+                    "singer_pictures": singer_photos.pictures_of(on)})
 
 
 @karaoke_api.get("/karaoke/search")
@@ -357,8 +364,12 @@ def heard():
 @karaoke_api.post("/karaoke/singers")
 def singers():
     """{add?: [names], remove?: [names]}: tonight's names, set before anyone sings -> {singers}."""
+    from . import singer_photos
     b = _body()
-    return jsonify({"singers": store().roster(add=b.get("add"), remove=b.get("remove"))})
+    out = store().roster(add=b.get("add"), remove=b.get("remove"))
+    if isinstance(b.get("remove"), list):
+        singer_photos.drop(b["remove"])                 # a name's photo goes with it
+    return jsonify({"singers": out})
 
 
 @karaoke_api.post("/karaoke/session")
@@ -366,8 +377,10 @@ def session():
     """{op: "new"}: a new session (store.new_session) -> {queue, singers}."""
     if _body().get("op") != "new":
         return _err(400, "op is new.")
+    from . import singer_photos
     st = store()
     st.new_session()
+    singer_photos.clear()
     return jsonify({"queue": st.snapshot()["queue"], "singers": st.singers()})
 
 
