@@ -5,4 +5,8 @@
 # fixtures.yaml's too). show_service re-reads it when it changes. Angles are degrees from the middle of the light's pan
 # or tilt range.
 version: 1
-fixtures: {}
+fixtures:
+  gigbar-a.laser:
+    lean_deg: 30.0
+  gigbar-b.laser:
+    lean_deg: 30.0

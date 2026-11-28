@@ -31,7 +31,23 @@ situations:
     sensor: living-room                     # the sensor a rule reads when it names none (the route's only one today)
 
 lights:
+  # The GigBARs' parts as their own surfaces (owner, 26 Nov: scenes, effects and transitions "across each of the gigbar
+  # components"; the laptop's groups, deployments/laptop/show.yaml). The shared file has movers (the spots) and lamps
+  # (every other light); here the derbies, the strobe LEDs and the lasers leave lamps for groups of their own, so each
+  # part draws its own scene. lamps keeps the bars' pars AND the four Hue lamps (owner, 28 Nov: "the four in the room
+  # are designed to be part of the washes").
   groups:
+    lamps: {label: Washes (pars and Hue), select: "kind:lamp !tag:derby !tag:strobe !tag:laser !tag:haze !tag:house",
+            carries_beat: 2}
+    # reads_under_lux, lands_on (config/room/show.yaml lights.room_light; docs/LIGHTS.md §7.5): the room light a
+    # low-power part needs to be seen, and where it lands. The laptop's figures (worked out in its 3D room for a
+    # 5 x 10 x 4 m pale room); this room is about the same size. Check by eye with the real bars.
+    lasers: {label: Lasers, select: "tag:laser", dark_level: 0, scenes_for: [laser], repeat_weight: 1.0,
+             reads_under_lux: 3, lands_on: [ceiling]}
+    derbies: {label: Derbies, select: "tag:derby", dark_level: floor, scenes_for: [derby], carries_beat: 3,
+              reads_under_lux: 20}
+    flashes: {label: Strobe LEDs, select: "tag:strobe", dark_level: 0, scenes_for: [flash],
+              repeat_weight: 1.0}             # they may keep their scene across a change (resting stays resting)
     remote-lights:                          # owner, 28 Oct: the glitterball and the pinspots are appliances the art
       label: Glitterball and pinspots       # director programs like any light group, with their own scenes (the
       appliances: [glitterball, pinspots]   # light scenes with an appliances block; a mode's light scene tags narrow
@@ -55,6 +71,16 @@ lights:
           level: {target: pinspots.level, steps: 8}
         colour_slot: {target: pinspots.colour}   # the scene's slot word is the remote's colour (white, red, fade, ...)
         shutter: {target: pinspots.flash, strobe: "on", open: "off"}
+  # The light the room has whatever the lights do (config/room/show.yaml lights.room_light; docs/LIGHTS.md §7.5): here
+  # the two 65" Frames playing live, never dimmed. An ESTIMATE, not measured: each is ~1.16 m2; live scenes average
+  # perhaps 80 cd/m2, so pi x 80 x 1.16 = ~290 lm each, ~580 lm for both; at the laptop room's 115 lm a lux (a room
+  # this size, pale surfaces) about 5 lux. MEASURE IT: blinds shut, the DMX lights and Hue off, both screens live
+  # through a song, the living-room sensor's lux (room_service /api/v1/status) is the figure.
+  room_light:
+    other_lux: 5.0
+  # The hazer is planned (fixtures.yaml): connected from the Light setup it has no tags, so it is found by its type too.
+  atmosphere:
+    select: "tag:haze | type:z-350"
   flow:
     mirror_ball:
       enabled: false                        # owner, 28 Oct: the glitterball is an appliance in lights.groups now (its
@@ -62,6 +88,31 @@ lights:
       power_member: mirror_ball.main
       direction_target: mirror_ball_motor.direction
       speed_target: mirror_ball_motor.speed
+
+  lineups:
+    spots-alone:        {label: The two pairs of heads alone, plays: [movers], into: [verse, outro, any], drive: [0.0, 0.45]}
+    pars-alone:         {label: The pars alone, plays: [lamps], into: [verse, outro, any], drive: [0.0, 0.4]}
+    pars-and-spots:     {label: Pars and heads, plays: [lamps, movers], into: [verse, any], drive: [0.2, 0.75], weight: 1.5}
+    pars-and-derbies:   {label: Pars and derbies, plays: [lamps, derbies], into: [verse, any], drive: [0.3, 0.8],
+                         features: [derbies]}
+    derbies-and-spots:  {label: Derbies and heads, plays: [derbies, movers], into: [verse, chorus, any], drive: [0.4, 0.9],
+                         features: [derbies]}
+    spots-and-laser:    {label: Heads and the laser, plays: [movers, lasers], into: [instrumental, any], drive: [0.2, 0.8],
+                         weight: 0.7, features: [lasers]}
+    derbies-and-laser:  {label: Derbies and the laser, plays: [derbies, lasers], into: [instrumental], drive: [0.3, 0.9],
+                         features: [lasers, derbies]}
+    pars-spots-derbies: {label: "Pars, heads and derbies", plays: [lamps, movers, derbies], into: [chorus, any],
+                         drive: [0.5, 1.0], weight: 1.5}
+    pars-derbies-flash: {label: Pars and derbies with the strobes, plays: [lamps, derbies, flashes], into: [chorus, any],
+                         drive: [0.6, 1.0]}
+    pars-spots-flash:   {label: Pars and heads with the strobes, plays: [lamps, movers, flashes], into: [chorus, any],
+                         drive: [0.6, 1.0]}
+    spots-derbies-laser: {label: Heads and derbies with the laser, plays: [movers, derbies, lasers], into: [chorus],
+                          drive: [0.55, 1.0], weight: 0.7, features: [derbies]}
+    everything:         {label: Everything, plays: [lamps, movers, derbies, flashes, lasers], into: [final_chorus, climax],
+                         drive: [0.0, 1.0], weight: 3.0}
+    everything-but-laser: {label: Everything but the laser, plays: [lamps, movers, derbies, flashes], into: [chorus, any],
+                           drive: [0.8, 1.0], weight: 0.6}
 
 ensemble:
   players:

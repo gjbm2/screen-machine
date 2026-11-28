@@ -1,6 +1,7 @@
 {
-  "_note": "Room modes (docs/av/ROOM_STATE_MODEL.md). Flat (owner, 16 Oct): every mode carries all of its own settings; transition rules match what a switch changes. Keys starting with _ are comments.",
+  "_note": "Room modes (docs/av/ROOM_STATE_MODEL.md). Flat (owner, 16 Oct): every mode carries all of its own settings; transition rules match what a switch changes. Keys starting with _ are comments. transition_s: every change a mode makes eases over this many seconds (DMX, the Hue stream joining and leaving, Sonos volume; an entry's own opts.over_s wins; docs/PICKUP_FROM_LAPTOP.md §2).",
   "default": "gallery",
+  "transition_s": 3,
   "labels": {
     "blinds.ch02": "Privacy blind ch02",
     "blinds.ch03": "Privacy blind ch03",
@@ -609,7 +610,7 @@
     "karaoke": {
       "label": "Karaoke",
       "icon": "music",
-      "_note": "The karaoke mode (owner, 26-27 Nov: karaoke is a switch on every mode, false on all but the one labelled Karaoke; docs/KARAOKE.md): entering it starts the karaoke player, leaving it stops it, and a song started from the karaoke panel takes the room into it. As the laptop's: the screens live with the art director picking (karaoke screen per Settings), the singalong feel (vivid palettes, haze light, strobes on a few big moments) with AI listening off. As Party for this room: blinds, TV input, lamps and DMX lights (the GigBARs) from the show, the director working the glitterball and pinspots (both start off). Sonos is left alone: the karaoke sound goes where Settings says.",
+      "_note": "The karaoke mode (owner, 26-27 Nov: karaoke is a switch on every mode, false on all but the one labelled Karaoke; docs/KARAOKE.md): entering it starts the karaoke player, leaving it stops it, and a song started from the karaoke panel takes the room into it. As the laptop's: the screens live with the art director picking (karaoke screen per Settings), the singalong feel (vivid palettes, haze light, strobes on a few big moments) with AI listening off. As Party for this room: blinds, TV input, lamps and DMX lights (the GigBARs) from the show, the director working the glitterball and pinspots (both start off). Sonos is left alone: the karaoke sound goes where Settings says. Its director.light_scenes tag (modes:singalong) picks out the light scenes written for Karaoke alone (light_scenes.yaml tags.modes: the singer's spot while the room waits, the next singer's glide), as the laptop's (28 Nov).",
       "state": {
         "show.mic": {
           "set": true,
@@ -669,6 +670,14 @@
         },
         "pinspots.flash": {
           "set": "off",
+          "restore": true
+        },
+        "director.light_scenes": {
+          "set": {
+            "scene_tags": [
+              "modes:singalong"
+            ]
+          },
           "restore": true
         }
       },
